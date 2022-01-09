@@ -6,8 +6,9 @@ const {
   createPost,
   updatePost,
   getAllPosts,
-  getPostsByUser,
   getUserById,
+  createTags,
+  addTagsToPost,
 } = require("./index");
 
 async function testDB() {
@@ -22,7 +23,7 @@ async function testDB() {
     console.log({ updateUserResult });
 
     const posts = await getAllPosts();
-    console.log({ posts });
+    console.log(JSON.stringify({ getAllPosts: posts }, null, 2));
 
     const updatePostResult = await updatePost(posts[0].id, {
       title: "New Title",
@@ -31,7 +32,7 @@ async function testDB() {
     console.log({ updatePostResult });
 
     const albert = await getUserById(1);
-    console.log({ albert, albertPosts: albert.posts });
+    console.log(JSON.stringify({ albert, albertPosts: albert.posts }, null, 2));
   } catch (err) {
     console.error(err);
   }
@@ -40,6 +41,8 @@ async function testDB() {
 async function dropTables() {
   try {
     await client.query(`
+      drop table if exists post_tags;
+      drop table if exists tags;
       drop table if exists posts;
       drop table if exists users;
     `);
@@ -69,7 +72,27 @@ async function createTables() {
         content TEXT NOT NULL,
         active BOOLEAN DEFAULT true
       );
+
+      CREATE TABLE tags (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) UNIQUE NOT NULL
+      );
+
+      CREATE TABLE post_tags (
+        "postId" INTEGER REFERENCES posts(id),
+        "tagId" INTEGER REFERENCES tags(id),
+        UNIQUE("postId", "tagId")
+      );
     `);
+
+    // through tables allow us to capture relations that are many to many
+    // each thing can point to multiple instances of another thing
+    // and no thing exclusively belongs to any other thing (in the through table)
+
+    // one to many relationships involve several (or zero) records
+    // pointing to one unique instance in another table
+    // in this case, every user can have multiple (or zero) posts
+    // BUT, every post belongs to exactly ONE user
 
     console.log("finished seeding tables!");
   } catch (err) {
@@ -133,6 +156,25 @@ async function createInitialPosts() {
   }
 }
 
+async function createInitialTags() {
+  try {
+    const [happy, sad, inspo, catman] = await createTags([
+      "#happy",
+      "#worst-day-ever",
+      "#youcandoanything",
+      "#catmandoeverything",
+    ]);
+
+    const [post1, post2, post3] = await getAllPosts();
+
+    await addTagsToPost(post1.id, [happy, inspo]);
+    await addTagsToPost(post2.id, [sad, inspo]);
+    await addTagsToPost(post3.id, [happy, catman, inspo]);
+  } catch (err) {
+    throw err;
+  }
+}
+
 async function rebuildDB() {
   try {
     client.connect();
@@ -141,6 +183,7 @@ async function rebuildDB() {
     await createTables();
     await createInitialUsers();
     await createInitialPosts();
+    await createInitialTags();
   } catch (err) {
     console.error(err);
   }

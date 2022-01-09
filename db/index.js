@@ -12,6 +12,8 @@ module.exports = {
   getAllPosts,
   getPostsByUser,
   getUserById,
+  createTags,
+  addTagsToPost,
 };
 
 ///////////
@@ -164,11 +166,13 @@ async function updatePost(id, fields = { title, content, active }) {
 
 async function getAllPosts() {
   try {
-    const { rows } = await client.query(`
-      select * from posts;
+    const { rows: postIds } = await client.query(`
+      select id from posts;
     `);
 
-    return rows;
+    const posts = await Promise.all(postIds.map(({ id }) => getPostById(id)));
+
+    return posts;
   } catch (err) {
     throw err;
   }
@@ -176,12 +180,150 @@ async function getAllPosts() {
 
 async function getPostsByUser(userId) {
   try {
-    const { rows } = await client.query(`
-      select * from posts
+    const { rows: postIds } = await client.query(`
+      select id from posts
       where posts."authorId"=${userId};
     `);
+    // postIds = [ { id: 1 }, { id: 2 }, ... ]
+
+    const posts = await Promise.all(postIds.map(({ id }) => getPostById(id)));
+
+    return posts;
+  } catch (err) {
+    throw err;
+  }
+}
+
+async function getPostById(postId) {
+  try {
+    const {
+      rows: [post],
+    } = await client.query(
+      `
+      select * from posts
+      where id=$1
+    `,
+      [postId]
+    );
+
+    // select the tags from a particular post
+    // by joining all tags in the tags table
+    // on all post_tags records in the post_tags through table
+    // IF -> WHERE post_tags record tagId matches the postId
+    // this allows to grab only the tags associated with a particular post
+    // since there's a many:many (many-to-many) relationship here
+    // we need to make sure that tags don't end up in an exclusive relationship with any given post
+    // otherwise they won't be useful to us as categories
+    const { rows: tags } = await client.query(
+      `
+      select tags.* from tags
+      join post_tags on tags.id=post_tags."tagId"
+      where post_tags."postId"=$1
+    `,
+      [postId]
+    );
+
+    const {
+      rows: [author],
+    } = await client.query(
+      `
+      select id, username, name, location from users
+      where id=$1
+    `,
+      [post.authorId]
+    );
+
+    post.tags = tags;
+    post.author = author;
+
+    // delete is a special keyword that completely removes a key (ie, a field)
+    // from an object
+    delete post.authorId;
+
+    // before deleting: post = { ..., authorId: INT }
+    // after deleting, post = { ... }, authorId has been COMPLETELY REMOVED
+
+    return post;
+  } catch (err) {
+    throw err;
+  }
+}
+
+//////////
+/* TAGS */
+//////////
+
+// tagList: ['#tagOne', '#tagTwo', ...]
+async function createTags(tagList) {
+  if (tagList.length === 0) {
+    return;
+  }
+
+  //    <--> this is the join that will create our comma-separated tuples
+  // ($1), ($2), ($3)
+  const insertValues = tagList.map((_, idx) => `$${idx + 1}`).join("), (");
+
+  const selectValues = tagList.map((_, idx) => `$${idx + 1}`).join(", ");
+
+  try {
+    // insert the tags, doing nothing on conflict
+    // returning nothing, we'll query after
+    await client.query(
+      `
+      insert into tags(name)
+      values (${insertValues})
+      on conflict (name) do nothing
+      returning *;
+    `,
+      tagList
+    );
+
+    // select all tags where the name is in our taglist
+    // return the rows from the query
+    const { rows } = await client.query(
+      `
+      select * from tags
+      where tags.name in (${selectValues});
+    `,
+      tagList
+    );
 
     return rows;
+  } catch (err) {
+    throw err;
+  }
+}
+
+////////////////////////////
+/* POST_TAG THROUGH TABLE */
+////////////////////////////
+
+async function createPostTag(postId, tagId) {
+  try {
+    await client.query(
+      `
+      insert into post_tags("postId", "tagId")
+      values ($1, $2)
+      on conflict ("postId", "tagId") do nothing;
+    `,
+      [postId, tagId] // we need an array literal here because our postId, tagId are both strings
+    );
+  } catch (err) {
+    throw err;
+  }
+}
+
+async function addTagsToPost(postId, tagList) {
+  try {
+    // this promise will need to be resolved
+    const createPostTagPromises = tagList.map((tag) =>
+      createPostTag(postId, tag.id)
+    );
+
+    // in order to resolve a LIST or ARRAY of promises, we use Promise.all()
+    await Promise.all(createPostTagPromises);
+
+    return await getPostById(postId);
   } catch (err) {
     throw err;
   }
