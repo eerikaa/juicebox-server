@@ -14,6 +14,7 @@ module.exports = {
   getUserById,
   createTags,
   addTagsToPost,
+  getPostsByTagName,
 };
 
 ///////////
@@ -113,7 +114,7 @@ async function getUserById(userId) {
 /* POSTS */
 ///////////
 
-async function createPost({ authorId, title, content }) {
+async function createPost({ authorId, title, content, tags = [] }) {
   try {
     const {
       rows: [post],
@@ -126,39 +127,60 @@ async function createPost({ authorId, title, content }) {
       [authorId, title, content]
     );
 
-    return post;
+    const tagList = await createTags(tags);
+
+    return await addTagsToPost(post.id, tagList);
   } catch (err) {
     throw err;
   }
 }
 
-async function updatePost(id, fields = { title, content, active }) {
+async function updatePost(postId, fields = {}) {
+  const { tags } = fields;
+  delete fields.tags;
+
+  const setString = Object.keys(fields)
+    .map((key, idx) => `"${key}"=$${idx + 1}`)
+    .join(", ");
+
   try {
-    const setString = Object.keys(fields)
-      .map((key, idx) => `"${key}"=$${idx + 1}`)
-      .join(", ");
-
-    if (setString.length === 0) {
-      return;
-    }
-
-    try {
-      const {
-        rows: [post],
-      } = await client.query(
+    if (setString.length > 0) {
+      await client.query(
         `
       update posts
       set ${setString}
-      where id=${id}
+      where id=${postId}
       returning *;
     `,
         Object.values(fields) // this expression returns an array, so we're good :)
       );
-
-      return post;
-    } catch (err) {
-      throw err;
     }
+
+    if (tags === undefined) {
+      return await getPostById(postId);
+    }
+
+    // if we had tags of #happy, #sad
+    // we might want to remove #sad
+    // so we can send in fields.tags = ['#happy'] ONLY
+    // and #sad will be removed!
+    const tagList = await createTags(tags);
+
+    const tagListIdString = tagList.map((tag) => `${tag.id}`).join(", ");
+
+    await client.query(
+      `
+      delete from post_tags
+      where "tagId"
+      not in (${tagListIdString})
+      and "postId"=$1;
+    `,
+      [postId]
+    );
+
+    await addTagsToPost(postId, tagList);
+
+    return await getPostById(postId);
   } catch (err) {
     throw err;
   }
@@ -244,6 +266,26 @@ async function getPostById(postId) {
     // after deleting, post = { ... }, authorId has been COMPLETELY REMOVED
 
     return post;
+  } catch (err) {
+    throw err;
+  }
+}
+
+async function getPostsByTagName(tagName) {
+  try {
+    const { rows: postIds } = await client.query(
+      `
+      select posts.id from posts
+      join post_tags on posts.id=post_tags."postId"
+      join tags on tags.id=post_tags."tagId"
+      where tags.name=$1
+    `,
+      [tagName]
+    );
+
+    console.log({ postIdsInsideGetPostsByTagName: postIds });
+
+    return await Promise.all(postIds.map((post) => getPostById(post.id)));
   } catch (err) {
     throw err;
   }

@@ -9,6 +9,7 @@ const {
   getUserById,
   createTags,
   addTagsToPost,
+  getPostsByTagName,
 } = require("./index");
 
 async function testDB() {
@@ -33,6 +34,14 @@ async function testDB() {
 
     const albert = await getUserById(1);
     console.log(JSON.stringify({ albert, albertPosts: albert.posts }, null, 2));
+
+    const updatePostTagsResult = await updatePost(posts[1].id, {
+      tags: ["#youcandoanything", "#redfish", "#bluefish"],
+    });
+    console.log(JSON.stringify({ updatePostTagsResult }, null, 2));
+
+    const postsWithHappy = await getPostsByTagName("#canmandoeverything");
+    console.log(JSON.stringify({ postsWithHappy }, null, 2));
   } catch (err) {
     console.error(err);
   }
@@ -135,45 +144,50 @@ async function createInitialPosts() {
       authorId: albert.id,
       title: "First Post",
       content: "This is my first post, I hope you love my post!",
+      tags: ["#happy", "#youcandoanything"],
     });
     await createPost({
       authorId: albert.id,
       title: "Second Post",
       content: "This is my second post, I hope you really love this one!",
+      tags: ["#happy", "#youcandoanything"],
     });
     await createPost({
       authorId: sandra.id,
       title: "First Post",
       content: "This is my first post, I hope you love my post!",
+      tags: ["#happy", "#worst-day-ever"],
     });
     await createPost({
       authorId: glamgal.id,
       title: "First Post",
       content: "This is my first post, I hope you love my post!",
+      tags: ["#happy", "#youcandoanything", "#canmandoeverything"],
     });
   } catch (err) {
     throw err;
   }
 }
 
-async function createInitialTags() {
-  try {
-    const [happy, sad, inspo, catman] = await createTags([
-      "#happy",
-      "#worst-day-ever",
-      "#youcandoanything",
-      "#catmandoeverything",
-    ]);
+/* this function has been replaced by direct tag application in createPost above */
+// async function createInitialTags() {
+//   try {
+//     const [happy, sad, inspo, catman] = await createTags([
+//       "#happy",
+//       "#worst-day-ever",
+//       "#youcandoanything",
+//       "#catmandoeverything",
+//     ]);
 
-    const [post1, post2, post3] = await getAllPosts();
+//     const [post1, post2, post3] = await getAllPosts();
 
-    await addTagsToPost(post1.id, [happy, inspo]);
-    await addTagsToPost(post2.id, [sad, inspo]);
-    await addTagsToPost(post3.id, [happy, catman, inspo]);
-  } catch (err) {
-    throw err;
-  }
-}
+//     await addTagsToPost(post1.id, [happy, inspo]);
+//     await addTagsToPost(post2.id, [sad, inspo]);
+//     await addTagsToPost(post3.id, [happy, catman, inspo]);
+//   } catch (err) {
+//     throw err;
+//   }
+// }
 
 async function rebuildDB() {
   try {
@@ -183,7 +197,8 @@ async function rebuildDB() {
     await createTables();
     await createInitialUsers();
     await createInitialPosts();
-    await createInitialTags();
+    /* this fn call has been deprecated in favor of creating tags inside createInitialPosts() */
+    // await createInitialTags();
   } catch (err) {
     console.error(err);
   }
