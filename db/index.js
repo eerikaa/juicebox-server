@@ -2,6 +2,10 @@ const { Client } = require("pg");
 const { rows } = require("pg/lib/defaults");
 const client = new Client(`postgres://localhost:5432/juicebox-dev`);
 
+require("dotenv").config();
+
+// EVERYTHING ELSE
+
 module.exports = {
   client,
   getAllUsers,
@@ -16,6 +20,7 @@ module.exports = {
   addTagsToPost,
   getPostsByTagName,
   getAllTags,
+  getUserByUsername,
 };
 
 ///////////
@@ -359,6 +364,24 @@ async function createPostTag(postId, tagId) {
     );
   } catch (err) {
     throw err;
+  }
+}
+async function getUserByUsername(username) {
+  try {
+    const {
+      rows: [user],
+    } = await client.query(
+      `
+      SELECT *
+      FROM users
+      WHERE username=$1;
+    `,
+      [username]
+    );
+
+    return user;
+  } catch (error) {
+    throw error;
   }
 }
 
