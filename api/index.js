@@ -14,8 +14,16 @@ apiRouter.use("/tags", tagsRouter);
 module.exports = apiRouter;
 
 const jwt = require("jsonwebtoken");
-const { getUserById } = require("../db");
+const { getUserById, getUserByUsername } = require("../db");
 const { JWT_SECRET } = process.env;
+
+apiRouter.use((req, res, next) => {
+  if (req.user) {
+    console.log("User is set:", req.user);
+  }
+
+  next();
+});
 
 // set `req.user` if possible
 apiRouter.use(async (req, res, next) => {
@@ -31,14 +39,6 @@ apiRouter.use(async (req, res, next) => {
     try {
       const { id } = jwt.verify(token, JWT_SECRET);
 
-      apiRouter.use((req, res, next) => {
-        if (req.user) {
-          console.log("User is set:", req.user);
-        }
-
-        next();
-      });
-
       if (id) {
         req.user = await getUserById(id);
         next();
@@ -53,6 +53,7 @@ apiRouter.use(async (req, res, next) => {
     });
   }
 });
+
 apiRouter.use((error, req, res, next) => {
   res.send({
     name: error.name,
