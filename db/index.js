@@ -1,6 +1,9 @@
 const { Client } = require("pg");
 const { rows } = require("pg/lib/defaults");
-const client = new Client(`postgres://localhost:5432/juicebox-dev`);
+// const client = new Client(`postgres://localhost:5432/juicebox-dev`);
+const client = new Client(
+  process.env.heroku.com / apps / desolate - dusk - 05672
+);
 
 require("dotenv").config();
 
